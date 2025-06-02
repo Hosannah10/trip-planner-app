@@ -1,0 +1,110 @@
+
+.trip-form-container {
+  max-width: 700px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  font-family: "Segoe UI", sans-serif;
+}
+
+.form-title {
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.form-error {
+  color: #dc2626;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.trip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.trip-input {
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.trip-button {
+  padding: 0.75rem;
+  background-color: #2563eb;
+  color: white;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.trip-button:hover {
+  background-color: #1e40af;
+}
+
+.map-section,
+.log-section {
+  margin-top: 2rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #444;
+  text-align: center;
+}
+
+.map-container {
+  height: 300px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.log-table-wrapper {
+  overflow-x: auto;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #f9fafb;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.log-table th,
+.log-table td {
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.log-table th {
+  background-color: #e0f2fe;
+  color: #0c4a6e;
+  font-weight: 600;
+}
+
+.driving-row {
+  background-color: #dcfce7;
+  color: #15803d;
+  font-weight: 500;
+}
+
+.resting-row {
+  background-color: #fef3c7;
+  color: #b45309;
+  font-weight: 500;
+}
