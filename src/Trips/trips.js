@@ -28,7 +28,7 @@ const TripForm = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.post("http://localhost:8000/api/trips/", formData);
+      const response = await axios.post("https://trip-planner-backend-8v2e.onrender.com/api/trips/", formData);
       console.log("Trip created:", response.data);
       await fetchRoute();
     } catch (error) {
