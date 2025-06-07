@@ -119,9 +119,10 @@ const TripForm = () => {
       logs[logs.length - 1].status = "Dropoff";
     }
 
+    const maxHoursPerDay = 9;
     // For each day (max 9 hours), set middle hour as Resting
-    for (let d = 0; d < logs.length; d += 9) {
-      const end = Math.min(d + 9, logs.length);
+    for (let d = 0; d < logs.length; d += maxHoursPerDay) {
+      const end = Math.min(d + maxHoursPerDay, logs.length);
       const restIndex = d + Math.floor((end - d - 1) / 2);
       if (logs[restIndex].status === "Driving") {
         logs[restIndex].status = "Resting";
@@ -130,8 +131,8 @@ const TripForm = () => {
 
     // Split into daily logs (max 9 hours per day)
     const dailyLogs = [];
-    for (let d = 0; d < logs.length; d += 9) {
-      dailyLogs.push(logs.slice(d, d + 9));
+    for (let d = 0; d < logs.length; d += maxHoursPerDay) {
+      dailyLogs.push(logs.slice(d, d + maxHoursPerDay));
     }
     setEldLogs(dailyLogs);
 
