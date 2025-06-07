@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { fixLeafletIcon, fuelIcon, restIcon, vehicleIcon } from "../components/fixLeafletIcon.ts";
 import axios from "axios";
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -12,23 +13,144 @@ const TripForm = () => {
     cycle_hours_used: "",
   });
   const [route, setRoute] = useState([]);
-  const [fuelStops, setFuelStops] = useState([]);
-  const [restStops, setRestStops] = useState([]);
   const [eldLogs, setEldLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [tripDistance, setTripDistance] = useState(null);
+  const [fuelStops, setFuelStops] = useState([]);
+  const [restIndices, setRestIndices] = useState([]);
+  const [currentMarker, setCurrentMarker] = useState(null);
+  const [truncatedRoute, setTruncatedRoute] = useState([]);
+
+  useEffect(() => {
+    fixLeafletIcon();
+  }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: name === "cycle_hours_used" ? parseFloat(value) : value,
+    });
+  };
+
+  const geocode = async (place) => {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+      place
+    )}&format=json&limit=1`;
+    const response = await axios.get(url);
+    if (response.data.length > 0) {
+      return {
+        lat: parseFloat(response.data[0].lat),
+        lon: parseFloat(response.data[0].lon),
+      };
+    } else {
+      throw new Error(`Geocoding failed for: ${place}`);
+    }
+  };
+
+  const fetchRoute = async () => {
+    try {
+      const pickupCoords = await geocode(formData.pickup_location);
+      const dropoffCoords = await geocode(formData.dropoff_location);
+      const currentCoords = await geocode(formData.current_location);
+
+      const routeUrl = `https://router.project-osrm.org/route/v1/driving/${pickupCoords.lon},${pickupCoords.lat};${dropoffCoords.lon},${dropoffCoords.lat}?overview=full&geometries=geojson`;
+      const response = await axios.get(routeUrl);
+
+      const fullCoordinates = response.data.routes[0].geometry.coordinates.map(
+        (coord) => [coord[1], coord[0]]
+      );
+
+      setRoute(fullCoordinates);
+
+      // Find closest point to current location
+      const closestIndex = fullCoordinates.reduce((closestIdx, coord, idx) => {
+        const dist = (a, b) =>
+          Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
+        return dist(coord, [currentCoords.lat, currentCoords.lon]) <
+          dist(fullCoordinates[closestIdx], [currentCoords.lat, currentCoords.lon])
+          ? idx
+          : closestIdx;
+      }, 0);
+
+      const slicedRoute = fullCoordinates.slice(0, closestIndex + 1);
+      const slicedDistanceKm =
+        (response.data.routes[0].distance / 1000) * (slicedRoute.length / fullCoordinates.length);
+
+      generateFuelStops(slicedRoute, slicedDistanceKm);
+      generateEldLogs(slicedRoute.length);
+      setTruncatedRoute(slicedRoute);
+      setCurrentMarker([currentCoords.lat, currentCoords.lon]);
+    } catch (error) {
+      setError("Error fetching route. Please check location names and try again.");
+    }
+  };
+
+  const generateFuelStops = (coordinates, distanceKm) => {
+    const fuelStops = [];
+    const interval = 1600; // 1000 miles in km
+    const numStops = Math.floor(distanceKm / interval);
+    const segmentLength = Math.floor(coordinates.length / (numStops + 1));
+    for (let i = 1; i <= numStops; i++) {
+      fuelStops.push(coordinates[i * segmentLength]);
+    }
+    setFuelStops(fuelStops);
+  };
+
+  const generateEldLogs = (routeLength) => {
+    const logs = [];
+    const totalHours = parseFloat(formData.cycle_hours_used);
+    if (isNaN(totalHours) || totalHours <= 0) return;
+
+    for (let i = 0; i < totalHours; i++) {
+      logs.push({ hour: i + 1, status: "Driving" });
+    }
+
+    if (logs.length > 0) logs[0].status = "Pickup";
+
+    const isAtDropoff =
+      formData.current_location.trim().toLowerCase() ===
+      formData.dropoff_location.trim().toLowerCase();
+
+    if (logs.length > 1 && isAtDropoff) {
+      logs[logs.length - 1].status = "Dropoff";
+    }
+
+    for (let d = 0; d < logs.length; d += 8) {
+      const end = Math.min(d + 8, logs.length);
+      const restIndex = d + Math.floor((end - d - 1) / 2);
+      if (logs[restIndex].status === "Driving") {
+        logs[restIndex].status = "Resting";
+      }
+    }
+
+    const dailyLogs = [];
+    for (let d = 0; d < logs.length; d += 8) {
+      dailyLogs.push(logs.slice(d, d + 8));
+    }
+    setEldLogs(dailyLogs);
+
+    const restIndices = logs
+    .map((log, i) => (log.status === "Resting" ? i : -1))
+    .filter(i => i !== -1 && i < routeLength);  // only up to current
+    setRestIndices(restIndices);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setLoading(true);
+    setRoute([]);
+    setFuelStops([]);
+    setEldLogs([]);
+    setRestIndices([]);
+    setCurrentMarker(null);
+
     try {
-      const response = await axios.post("https://trip-planner-backend-8v2e.onrender.com/api/trips/", formData);
+      const response = await axios.post(
+        "https://trip-planner-backend-8v2e.onrender.com/api/trips/",
+        formData
+      );
       console.log("Trip created:", response.data);
       await fetchRoute();
     } catch (error) {
@@ -39,144 +161,93 @@ const TripForm = () => {
     }
   };
 
-  const fetchRoute = async () => {
-    try {
-      const response = await axios.get("https://router.project-osrm.org/route/v1/driving/-122.42,37.78;-77.03,38.91?overview=full&geometries=geojson");
-      const coordinates = response.data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-      const distanceKm = response.data.routes[0].distance / 1000;
-      setRoute(coordinates);
-      setTripDistance(distanceKm);
-      generateEldLogs(distanceKm);
-      calculateStops(coordinates, distanceKm);
-    } catch (error) {
-      setError("Error fetching route. Please check your network.");
-      console.error("Error fetching route:", error);
-    }
-  };
-
-  const generateEldLogs = (distanceKm) => {
-    const logs = [];
-    const totalHours = distanceKm / 80; // average 80 km/h driving speed
-    const pickupDropoffTime = 2; // 1 hour for pickup, 1 hour for dropoff
-    let usedHours = pickupDropoffTime;
-    let cycleHoursUsed = parseFloat(formData.cycle_hours_used);
-    let dailyHours = 0;
-    let day = 1;
-
-    logs.push({ day, hour: 0, status: "Pickup" });
-    logs.push({ day, hour: 1, status: "Dropoff" });
-    dailyHours = 2;
-
-    let i = 2;
-    let driving = true;
-    while (usedHours < totalHours + pickupDropoffTime && cycleHoursUsed < 70) {
-      logs.push({ day, hour: i % 24, status: driving ? "Driving" : "Resting" });
-      usedHours += 1;
-      cycleHoursUsed += 1;
-      dailyHours += 1;
-      i++;
-
-      if (i % 24 === 0) {
-        day += 1;
-        dailyHours = 0;
-      }
-    }
-
-    setEldLogs(logs);
-  };
-
-  const calculateStops = (coordinates, distanceKm) => {
-    const fuelInterval = 1600; // km
-    const restInterval = 640; // km (8 hrs driving)
-    const totalCoords = coordinates.length;
-    const fuelStops = [];
-    const restStops = [];
-
-    for (let i = 1; i * fuelInterval < distanceKm; i++) {
-      const index = Math.floor((i * fuelInterval / distanceKm) * totalCoords);
-      if (coordinates[index]) fuelStops.push(coordinates[index]);
-    }
-
-    for (let j = 1; j * restInterval < distanceKm; j++) {
-      const index = Math.floor((j * restInterval / distanceKm) * totalCoords);
-      if (coordinates[index]) restStops.push(coordinates[index]);
-    }
-
-    setFuelStops(fuelStops);
-    setRestStops(restStops);
-  };
-
-  const groupedLogs = eldLogs.reduce((acc, log) => {
-    if (!acc[log.day]) acc[log.day] = [];
-    acc[log.day].push(log);
-    return acc;
-  }, {});
-
   return (
     <div className="trip-form-container">
-      <h2 className="form-title">Create a Trip</h2>
-      {error && <p className="form-error">{error}</p>}
+      <h2>Create a Trip</h2>
+      {error && <p className="error">{error}</p>}
       <form onSubmit={handleSubmit} className="trip-form">
-        <input name="current_location" placeholder="Current Location" onChange={handleChange} className="trip-input" required />
-        <input name="pickup_location" placeholder="Pickup Location" onChange={handleChange} className="trip-input" required />
-        <input name="dropoff_location" placeholder="Dropoff Location" onChange={handleChange} className="trip-input" required />
-        <input name="cycle_hours_used" type="number" placeholder="Current Cycle Used (Hrs)" onChange={handleChange} className="trip-input" required />
-        <button type="submit" className="trip-button" disabled={loading}>
-          {loading ? "Processing..." : "Submit"}
+        <input name="current_location" placeholder="Current Location" onChange={handleChange} required />
+        <input name="pickup_location" placeholder="Pickup Location" onChange={handleChange} required />
+        <input name="dropoff_location" placeholder="Dropoff Location" onChange={handleChange} required />
+        <input
+          name="cycle_hours_used"
+          type="number"
+          placeholder="Current Cycle Used (Hrs)"
+          onChange={handleChange}
+          required
+        />
+        <button type="submit" disabled={loading}>
+          {loading ? "Loading..." : "Submit"}
         </button>
       </form>
 
       <div className="map-section">
-        <h3 className="section-title">Route Map</h3>
-        <MapContainer center={[37.78, -122.42]} zoom={5} className="map-container">
+        <h3>Route Map</h3>
+        <MapContainer center={route.length ? route[0] : [37.78, -122.42]} zoom={6} style={{ height: "400px", width: "100%" }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           {route.length > 0 && (
             <>
+              <Polyline positions={route} color="blue" />
               <Marker position={route[0]}>
-                <Popup>Start</Popup>
+                <Popup>Pickup Location</Popup>
               </Marker>
               <Marker position={route[route.length - 1]}>
-                <Popup>End</Popup>
+                <Popup>Dropoff Location</Popup>
               </Marker>
-              <Polyline positions={route} color="blue" weight={5} />
-              {fuelStops.map((coord, idx) => (
-                <Marker key={`fuel-${idx}`} position={coord}>
-                  <Popup>Fuel Stop</Popup>
+              {currentMarker && (
+                <Marker position={currentMarker} icon={vehicleIcon}>
+                  <Popup>Current Location</Popup>
+                </Marker>
+              )}
+              {fuelStops.map((stop, idx) => (
+                <Marker key={idx} position={stop} icon={fuelIcon}>
+                  <Popup>Fuel Stop {idx + 1}</Popup>
                 </Marker>
               ))}
-              {restStops.map((coord, idx) => (
-                <Marker key={`rest-${idx}`} position={coord}>
-                  <Popup>Rest Stop</Popup>
+              {restIndices.map((index, idx) => {
+              const posIndex = Math.floor((index / parseFloat(formData.cycle_hours_used)) * truncatedRoute.length);
+              const position = truncatedRoute[posIndex];
+              return (
+                <Marker key={`rest-${idx}`} position={position} icon={restIcon}>
+                  <Popup>Rest Stop (Hour {index + 1})</Popup>
                 </Marker>
-              ))}
+              );
+              })}
             </>
           )}
         </MapContainer>
       </div>
 
       <div className="log-section">
-        <h3 className="section-title">ELD Log Sheets (Daily)</h3>
-        {Object.entries(groupedLogs).map(([day, logs]) => (
-          <div key={day} className="daily-log">
-            <h4>Day {day}</h4>
-            <div className="log-table-wrapper">
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    <th>Hour</th>
-                    <th>Status</th>
+        <h3>ELD Log Sheets</h3>
+        {eldLogs.map((dayLogs, dayIndex) => (
+          <div key={dayIndex} className="log-sheet">
+            <h4>Day {dayIndex + 1}</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>Hour</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayLogs.map((log) => (
+                  <tr
+                    key={log.hour}
+                    className={
+                      log.status === "Driving"
+                        ? "driving"
+                        : log.status === "Resting"
+                        ? "resting"
+                        : "pickup-dropoff"
+                    }
+                  >
+                    <td>{log.hour}</td>
+                    <td>{log.status}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {logs.map((log, index) => (
-                    <tr key={index} className={log.status === "Driving" ? "driving-row" : log.status === "Resting" ? "resting-row" : "pickup-dropoff-row"}>
-                      <td>{log.hour}</td>
-                      <td>{log.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         ))}
       </div>
@@ -185,6 +256,3 @@ const TripForm = () => {
 };
 
 export default TripForm;
-
-
-
