@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { fixLeafletIcon, fuelIcon, restIcon, vehicleIcon } from "../components/fixLeafletIcon.ts";
 import axios from "axios";
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
