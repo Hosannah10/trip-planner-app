@@ -102,31 +102,36 @@ const TripForm = () => {
     const totalHours = parseFloat(formData.cycle_hours_used);
     if (isNaN(totalHours) || totalHours <= 0) return;
 
+    // Initialize all as Driving
     for (let i = 0; i < totalHours; i++) {
       logs.push({ hour: i + 1, status: "Driving" });
     }
 
+    // First hour = Pickup
     if (logs.length > 0) logs[0].status = "Pickup";
 
     const isAtDropoff =
       formData.current_location.trim().toLowerCase() ===
       formData.dropoff_location.trim().toLowerCase();
 
+    // Last hour = Dropoff
     if (logs.length > 1 && isAtDropoff) {
       logs[logs.length - 1].status = "Dropoff";
     }
 
-    for (let d = 0; d < logs.length; d += 8) {
-      const end = Math.min(d + 8, logs.length);
+    // For each day (max 9 hours), set middle hour as Resting
+    for (let d = 0; d < logs.length; d += 9) {
+      const end = Math.min(d + 9, logs.length);
       const restIndex = d + Math.floor((end - d - 1) / 2);
       if (logs[restIndex].status === "Driving") {
         logs[restIndex].status = "Resting";
       }
     }
 
+    // Split into daily logs (max 9 hours per day)
     const dailyLogs = [];
-    for (let d = 0; d < logs.length; d += 8) {
-      dailyLogs.push(logs.slice(d, d + 8));
+    for (let d = 0; d < logs.length; d += 9) {
+      dailyLogs.push(logs.slice(d, d + 9));
     }
     setEldLogs(dailyLogs);
 
